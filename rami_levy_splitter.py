@@ -43,7 +43,7 @@ def calculate_debt(total_receipt_cost, discount_rate, payer_name, specific_costs
     shared_debt_per_person = net_shared_debt / 2
     
     # 6. סיכום החובות הסופיים להחזר לקרדיטור (המשלם)
-    final_debts = {}
+    final_debts_to_payer = {}
     
     # חוב אילן = עלות ספציפית (מוזלת) + חצי מהחוב המשותף
     ilan_debt = discounted_specific_debts.get("אילן", 0) + shared_debt_per_person
@@ -55,22 +55,28 @@ def calculate_debt(total_receipt_cost, discount_rate, payer_name, specific_costs
     yaakov_debt = discounted_specific_debts.get("יעקב", 0)
     parents_debt = discounted_specific_debts.get("הורים", 0)
 
-    final_debts = {
+    final_debts_to_payer = {
         "אילן": ilan_debt,
         "מירה": mira_debt,
         "יעקב": yaakov_debt,
         "הורים": parents_debt
     }
 
+    # 7. חישוב מיוחד עבור הזינוק ל-Splitwise (מירה לאילן)
+    # זהו למעשה סך החוב של מירה לקרדיטור (יעקב), כפי שחושב קודם.
+    mira_debt_to_ilan_for_splitwise = mira_debt
+
+
     # סיכום נתונים לבדיקת תקינות (Display)
     summary = {
         "total_actual_debt": total_actual_debt,
         "specific_debt_total": specific_debt_total,
         "net_shared_debt": net_shared_debt,
-        "shared_debt_per_person": shared_debt_per_person
+        "shared_debt_per_person": shared_debt_per_person,
+        "mira_debt_to_ilan_for_splitwise": mira_debt_to_ilan_for_splitwise,
     }
 
-    return final_debts, summary
+    return final_debts_to_payer, summary
 
 
 # --- ממשק Streamlit ---
@@ -124,7 +130,7 @@ with col2:
 # --- חישוב והצגת תוצאות ---
 if st.button("חשב חובות", type="primary"):
     if total_receipt_cost > 0:
-        final_debts, summary = calculate_debt(
+        final_debts_to_payer, summary = calculate_debt(
             total_receipt_cost,
             discount_rate,
             payer_name,
@@ -133,20 +139,31 @@ if st.button("חשב חובות", type="primary"):
 
         st.markdown("---")
         st.subheader("✅ סיכום וחלוקת חובות")
-        st.markdown(f"**הערה: כל הסכומים להלן הם סכומי ההחזר ל-** **{payer_name}**")
-
-        debt_data = []
         
-        # יוצרים טבלה מסודרת של חובות סופיים
-        for name, debt in final_debts.items():
+        # הטבלה הראשית מציגה את החוב לקרדיטור
+        st.markdown(f"**חובות להחזר ל-** **{payer_name}** (הסכומים להחזר אם הייתם מחזירים לו ישירות):")
+        
+        debt_data_to_payer = []
+        for name, debt in final_debts_to_payer.items():
             if debt > 0:
-                debt_data.append({"משתתף": name, f"חוב החזר ל-{payer_name} ({CURRENCY})": f"{debt:.2f}"})
+                debt_data_to_payer.append({"משתתף": name, f"חוב החזר ל-{payer_name} ({CURRENCY})": f"{debt:.2f}"})
 
         st.dataframe(
-            debt_data,
+            debt_data_to_payer,
             use_container_width=True,
             hide_index=True
         )
+
+        # התוצאה הספציפית ל-Splitwise
+        st.markdown("---")
+        st.subheader("📝 נתונים להזנה ל-Splitwise (בשיטת שרשור חובות)")
+        st.info(
+            f"**1. חוב אילן ליעקב:** {summary['total_actual_debt']:.2f} {CURRENCY} (אתה לוקח על עצמך את כל החוב ליעקב)."
+        )
+        st.success(
+            f"**2. חוב מירה לאילן:** {summary['mira_debt_to_ilan_for_splitwise']:.2f} {CURRENCY} (זה הסכום שאתה מחייב את מירה - חלקה + הקפה שלה)."
+        )
+        st.caption("שים לב: חוב מירה לאילן (368.73₪) מורכב מחלקה המשותף (356.41₪) + עלות הקפסולות שלה לאחר הנחה (12.32₪).")
         
         # --- פירוט חישוב לבדיקת QA ---
         st.markdown("### 🔬 פירוט תהליך החישוב (לאימות)")
@@ -160,7 +177,7 @@ if st.button("חשב חובות", type="primary"):
         st.markdown("---")
         
         # סיכום החזר כדי לוודא תקינות
-        total_repaid = sum(final_debts.values())
+        total_repaid = sum(final_debts_to_payer.values())
         if abs(total_repaid - summary['total_actual_debt']) < 0.01:
              st.success(f"**בדיקת תקינות עברה:** סך ההחזר ({total_repaid:.2f} {CURRENCY}) שווה לחוב האמיתי הכולל.")
         else:
@@ -171,4 +188,4 @@ if st.button("חשב חובות", type="primary"):
         st.warning("נא להזין עלות קבלה כוללת חיובית.")
 
 st.markdown("---")
-st.markdown("בנוסף, אם אתה רוצה להזין נתונים ל-Splitwise בשיטת שרשור החובות כפי שביקשת קודם (אתה מחזיר ליעקב ומירה מחזירה לך), תוכל להשתמש בשורה **חוב מירה** מתוך הטבלה הסופית.")
+st.markdown("עכשיו אתה יכול להשתמש בסכום המדויק לחיוב מירה ב-Splitwise!")
